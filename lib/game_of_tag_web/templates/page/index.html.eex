@@ -12,10 +12,11 @@
     <canvas
       id="canvas"
       class="canvas"
-      width="<%= 400 %>"
-      height="<%= 400 %>"
+      width="<%= @screen_width %>"
+      height="<%= @screen_height %>"
     >
     </canvas>
+
     <p class="instructions">
       Use the keyboard arrows to move your player
     </p>
