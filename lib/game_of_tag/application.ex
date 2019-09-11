@@ -11,8 +11,9 @@ defmodule GameOfTag.Application do
       # Start the Ecto repository
       GameOfTag.Repo,
       # Start the endpoint when the application starts
-      GameOfTagWeb.Endpoint
+      GameOfTagWeb.Endpoint,
       # Starts a worker by calling: GameOfTag.Worker.start_link(arg)
+      GameOfTag.GameState
       # {GameOfTag.Worker, arg},
     ]
 
