@@ -1,8 +1,11 @@
 defmodule GameOfTagWeb.UserSocket do
   use Phoenix.Socket
+  alias GameOfTag.GameState
+  import Exgravatar
 
   ## Channels
   # channel "room:*", GameOfTagWeb.RoomChannel
+  channel "players:*", GameOfTagWeb.PlayerChannel
 
   # Socket params are passed from the client and can
   # be used to verify and authenticate a user. After
@@ -15,7 +18,15 @@ defmodule GameOfTagWeb.UserSocket do
   #
   # See `Phoenix.Token` documentation for examples in
   # performing token verification on connect.
-  def connect(_params, socket, _connect_info) do
+  def connect(%{"user_id" => email}, socket, _connect_info) do
+    socket =
+      assign(
+        socket,
+        :gravatar_url,
+        gravatar_url(email, s: GameState.player_size())
+      )
+
+    socket = assign(socket, :player_id, email)
     {:ok, socket}
   end
 

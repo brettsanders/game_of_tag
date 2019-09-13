@@ -1,63 +1,146 @@
-// NOTE: The contents of this file will only be executed if
-// you uncomment its entry in "assets/js/app.js".
+import {
+  Socket
+} from "phoenix"
 
-// To use Phoenix channels, the first step is to import Socket,
-// and connect at the socket path in "lib/web/endpoint.ex".
-//
-// Pass the token on params as below. Or remove it
-// from the params if you are not using authentication.
-import {Socket} from "phoenix"
+let me
+let players = {}
+let gravatarImages = {}
+let messagesContainer = $("#messages")
+let canvas = $("#canvas")[0]
+let ctx = canvas.getContext("2d")
+let w = $("#canvas").width()
+let h = $("#canvas").height()
+let playerWidth = 20
+let playerHeight = 20
+let playerWasKilled = 0
 
-let socket = new Socket("/socket", {params: {token: window.userToken}})
+// draw board
+function drawBoard() {
+  let boardColor = "white"
+  if (playerWasKilled > 0) {
+    boardColor = "red"
+    playerWasKilled--
+  }
+  ctx.fillStyle = boardColor
+  ctx.fillRect(0, 0, w, h)
 
-// When you connect, you'll often need to authenticate the client.
-// For example, imagine you have an authentication plug, `MyAuth`,
-// which authenticates the session and assigns a `:current_user`.
-// If the current user exists you can assign the user's token in
-// the connection for use in the layout.
-//
-// In your "lib/web/router.ex":
-//
-//     pipeline :browser do
-//       ...
-//       plug MyAuth
-//       plug :put_user_token
-//     end
-//
-//     defp put_user_token(conn, _) do
-//       if current_user = conn.assigns[:current_user] do
-//         token = Phoenix.Token.sign(conn, "user socket", current_user.id)
-//         assign(conn, :user_token, token)
-//       else
-//         conn
-//       end
-//     end
-//
-// Now you need to pass this token to JavaScript. You can do so
-// inside a script tag in "lib/web/templates/layout/app.html.eex":
-//
-//     <script>window.userToken = "<%= assigns[:user_token] %>";</script>
-//
-// You will need to verify the user token in the "connect/3" function
-// in "lib/web/channels/user_socket.ex":
-//
-//     def connect(%{"token" => token}, socket, _connect_info) do
-//       # max_age: 1209600 is equivalent to two weeks in seconds
-//       case Phoenix.Token.verify(socket, "user socket", token, max_age: 1209600) do
-//         {:ok, user_id} ->
-//           {:ok, assign(socket, :user, user_id)}
-//         {:error, reason} ->
-//           :error
-//       end
-//     end
-//
-// Finally, connect to the socket:
-socket.connect()
+  for (let id in players) {
+    drawPlayer(players[id])
+  }
+}
 
-// Now that you are connected, you can join channels with a topic:
-let channel = socket.channel("topic:subtopic", {})
-channel.join()
-  .receive("ok", resp => { console.log("Joined successfully", resp) })
-  .receive("error", resp => { console.log("Unable to join", resp) })
+// draw a player
+function drawPlayer(player) {
+  let x = player.x * playerWidth
+  let y = player.y * playerHeight
+  let gravatarImage = gravatarImages[player.gravatar_url]
 
-export default socket
+  // Draws the player sprite
+  if (gravatarImage) {
+    ctx.drawImage(gravatarImage, x, y);
+  } else {
+    // until we have a gravatar image, we use a square player sprite
+    ctx.fillStyle = "blue"
+    ctx.fillRect(x, y, playerWidth, playerHeight)
+    ctx.strokeStyle = "white"
+    ctx.strokeRect(x, y, playerWidth, playerHeight)
+
+    // Background image
+    let image = new Image();
+    image.onload = function () {
+      // When we have finished loading the image, we store it in the image cache
+      gravatarImages[player.gravatar_url] = image
+      drawBoard()
+    };
+    image.src = player.gravatar_url
+  }
+
+  // draws the player score
+  ctx.fillStyle = "black"
+  ctx.fillText(player.kills, x + playerWidth + 2, y + playerHeight)
+}
+
+function setupChannelMessageHandlers(channel) {
+  // New player joined the game
+  channel.on("player:joined", ({
+    player: player
+  }) => {
+    messagesContainer.append(`<br/>${player.id} joined`)
+    messagesContainer.scrollTop(messagesContainer.prop("scrollHeight"))
+    players[player.id] = player
+    drawBoard()
+  })
+
+  // Player changed position in board
+  channel.on("player:position", ({
+    player: player
+  }) => {
+    players[player.id] = player
+    drawBoard()
+  })
+
+  // Player was killed
+  channel.on("player:player_killed", ({
+    player: player
+  }) => {
+    if (player.id === me) { // we were killed
+      playerWasKilled = 3 // how many times we'll change the canvas color
+    }
+    players[player.id] = player
+    drawBoard()
+  })
+
+}
+
+// Maps the arrow keys to a direction
+function bindArrowKeys(channel, document) {
+  $(document).keydown(function (e) {
+    let key = e.which,
+      d
+
+    if (key == "37") {
+      d = "left"
+    } else if (key == "38") {
+      d = "up"
+    } else if (key == "39") {
+      d = "right"
+    } else if (key == "40") {
+      d = "down"
+    }
+
+    if (d) {
+      // notifies everyone our move
+      channel.push("player:move", {
+        direction: d
+      })
+    }
+  });
+}
+
+// Start the connection to the socket and joins the channel
+// Does initialization and key binding
+function connectToSocket(user_id, document) {
+  // connects to the socket endpoint
+  let socket = new Socket("/socket", {
+    params: {
+      user_id: user_id
+    }
+  })
+  socket.connect()
+  let channel = socket.channel("players:lobby", {})
+  me = user_id
+
+  // joins the channel
+  channel.join()
+    .receive("ok", initialPlayers => { // on joining channel, we receive the current players list
+      console.log('Joined to channel');
+      setupChannelMessageHandlers(channel)
+      bindArrowKeys(channel, document)
+      players = initialPlayers.players
+      drawBoard()
+    })
+}
+
+export {
+  connectToSocket
+}
